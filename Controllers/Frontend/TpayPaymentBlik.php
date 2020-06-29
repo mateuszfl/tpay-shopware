@@ -7,6 +7,7 @@
  * @support pt@tpay.com
  *
  * @author Mateusz Flasiński
+ * @author Michał Bortkiewicz
  * @author Piotr Jóźwiak
  *
  * For the full copyright and license information, please view the LICENSE
@@ -44,7 +45,7 @@ class Shopware_Controllers_Frontend_TpayPaymentBlik extends TpayPaymentControlle
     {
         $blikCode = $this->request->get('code');
 
-        $crc = $this->createPaymentUniqueId();
+        $crc = $this->session->offsetExists('tPayCrc') ? $this->session->offsetGet('tPayCrc') : $this->createPaymentUniqueId();
 
         $transactionConfig = $this->getTransactionConfig($crc, false);
 
@@ -57,9 +58,7 @@ class Shopware_Controllers_Frontend_TpayPaymentBlik extends TpayPaymentControlle
 
         $this->insertOrder($this->transactionID, $crc);
 
-        if($this->session->offsetExists('tPayTransaction')) {
-            $this->session->offsetUnset('tPayTransaction');
-        }
+        $this->unsetTpaySession();
 
         $this->responseJSON(['success' => true, 'number' => $this->getOrderNumber()]);
     }
@@ -121,10 +120,9 @@ class Shopware_Controllers_Frontend_TpayPaymentBlik extends TpayPaymentControlle
                 $this->transactionID = $tpayTransaction['title'];
 
                 $this->session->offsetSet('tPayTransaction', $tpayTransaction);
+                $this->session->offsetSet('tPayCrc', $transactionConfig['crc']);
             } catch (Exception | TException $exception) {
-                if($this->session->offsetExists('tPayTransaction')) {
-                    $this->session->offsetUnset('tPayTransaction');
-                }
+                $this->unsetTpaySession();
                 $this->logger->error($exception->getMessage());
                 return false;
             }
@@ -140,5 +138,16 @@ class Shopware_Controllers_Frontend_TpayPaymentBlik extends TpayPaymentControlle
         }
 
         return false;
+    }
+
+    private function unsetTpaySession(): void
+    {
+        if($this->session->offsetExists('tPayTransaction')) {
+            $this->session->offsetUnset('tPayTransaction');
+        }
+
+        if($this->session->offsetExists('tPayCrc')) {
+            $this->session->offsetUnset('tPayCrc');
+        }
     }
 }
