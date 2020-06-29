@@ -27,9 +27,13 @@ class Shopware_Controllers_Frontend_TpayPaymentBlik extends TpayPaymentControlle
     /** @var TpayBasicApi */
     protected $tpayApi;
 
+    /** @var Enlight_Components_Session_Namespace */
+    protected $session;
+
     public function preDispatch()
     {
         $this->tpayApi = $this->container->get('tpay_shopware_payments.basic_api');
+        $this->session = $this->container->get('session');
         parent::preDispatch();
     }
 
@@ -52,6 +56,10 @@ class Shopware_Controllers_Frontend_TpayPaymentBlik extends TpayPaymentControlle
         }
 
         $this->insertOrder($this->transactionID, $crc);
+
+        if($this->session->offsetExists('tPayTransaction')) {
+            $this->session->offsetUnset('tPayTransaction');
+        }
 
         $this->responseJSON(['success' => true, 'number' => $this->getOrderNumber()]);
     }
@@ -102,18 +110,24 @@ class Shopware_Controllers_Frontend_TpayPaymentBlik extends TpayPaymentControlle
      */
     private function createBlikTransaction(array $transactionConfig, string $blikCode): bool
     {
-        $transactionConfig['group'] = Plugin::BLIK;
-        try {
-            $tpayTransaction = $this->tpayApi->create($transactionConfig);
+        if($this->session->offsetExists('tPayTransaction')) {
+            $tpayTransaction = $this->session->offsetGet('tPayTransaction');
             $this->transactionID = $tpayTransaction['title'];
-        } catch (TException $TException) {
-            $this->logger->error($TException->getMessage());
 
-            return false;
-        } catch (Exception $e) {
-            $this->logger->error($e->getMessage());
+        } else {
+            $transactionConfig['group'] = Plugin::BLIK;
+            try {
+                $tpayTransaction = $this->tpayApi->create($transactionConfig);
+                $this->transactionID = $tpayTransaction['title'];
 
-            return false;
+                $this->session->offsetSet('tPayTransaction', $tpayTransaction);
+            } catch (Exception | TException $exception) {
+                if($this->session->offsetExists('tPayTransaction')) {
+                    $this->session->offsetUnset('tPayTransaction');
+                }
+                $this->logger->error($exception->getMessage());
+                return false;
+            }
         }
 
         try {
